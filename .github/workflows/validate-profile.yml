@@ -1,0 +1,158 @@
+name: CI - Validar Perfil
+
+on:
+  pull_request_target:
+    branches:
+      - main
+    types: [opened, synchronize]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  validate:
+    name: Validar archivo de perfil
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout del repositorio base
+        uses: actions/checkout@v4
+        with:
+          # Checkout del HEAD del PR de forma segura
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Instalar gray-matter para validación
+        run: npm install gray-matter
+
+      - name: Detectar archivos cambiados en participants/
+        id: changed-files
+        run: |
+          # Obtener archivos agregados en participants/
+          ADDED=$(git diff --name-only --diff-filter=A origin/main HEAD -- 'participants/*.md' | grep -v '_template.md' || true)
+          MODIFIED=$(git diff --name-only --diff-filter=M origin/main HEAD -- 'participants/*.md' | grep -v '_template.md' || true)
+          OTHER=$(git diff --name-only origin/main HEAD -- '*.yml' '*.njk' '*.js' '*.css' '*.json' || true)
+
+          echo "Archivos nuevos: $ADDED"
+          echo "Archivos modificados: $MODIFIED"
+          echo "Otros archivos cambiados: $OTHER"
+
+          if [ -n "$OTHER" ]; then
+            echo "has_other_changes=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_other_changes=false" >> $GITHUB_OUTPUT
+          fi
+
+          if [ -z "$ADDED" ] && [ -z "$MODIFIED" ]; then
+            echo "has_profile_changes=false" >> $GITHUB_OUTPUT
+            echo "profile_file=" >> $GITHUB_OUTPUT
+          else
+            echo "has_profile_changes=true" >> $GITHUB_OUTPUT
+            echo "profile_file=${ADDED}${MODIFIED}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Verificar que solo se cambió el archivo de perfil
+        id: check-only-profile
+        continue-on-error: true
+        run: |
+          if [ "${{ steps.changed-files.outputs.has_other_changes }}" == "true" ]; then
+            echo "Este PR modifica archivos fuera de la carpeta participants/"
+            echo "Solo se permite agregar archivos dentro de participants/"
+            exit 1
+          fi
+
+      - name: Verificar que se agregó un perfil
+        id: check-profile-exists
+        continue-on-error: true
+        run: |
+          if [ "${{ steps.changed-files.outputs.has_profile_changes }}" != "true" ]; then
+            echo "No se encontraron archivos de perfil nuevos en participants/"
+            exit 1
+          fi
+
+      - name: Validar campos del perfil
+        id: check-profile-fields
+        continue-on-error: true
+        env:
+          PROFILE_FILE: ${{ steps.changed-files.outputs.profile_file }}
+        run: |
+          if [ -z "$PROFILE_FILE" ]; then
+            echo "No hay archivo de perfil para validar"
+            exit 1
+          fi
+          node .github/scripts/validate-profile.js "$PROFILE_FILE"
+
+      - name: Determinar resultado de la validación
+        id: validation-result
+        run: |
+          if [[ "${{ steps.check-only-profile.outcome }}" == "success" && \
+                "${{ steps.check-profile-exists.outcome }}" == "success" && \
+                "${{ steps.check-profile-fields.outcome }}" == "success" ]]; then
+            echo "passed=true" >> $GITHUB_OUTPUT
+          else
+            echo "passed=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Comentar en el PR - Validación exitosa
+        if: steps.validation-result.outputs.passed == 'true'
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          body: |
+            ## ✅ Validación de Perfil — Aprobada
+
+            ¡Tu perfil pasó todas las verificaciones! Esto es lo que revisamos:
+
+            | Verificación | Estado |
+            |-------------|--------|
+            | Solo se modificó `participants/` | ✅ |
+            | Existe un archivo de perfil nuevo | ✅ |
+            | Todos los campos requeridos están completos | ✅ |
+
+            **Siguiente paso:** El preview de Vercel se está generando. Cuando aparezca el enlace en los comentarios, revisa que tu tarjeta se vea bien y luego solicita la revisión del administrador del taller.
+
+            > *Validado automáticamente por el CI del taller* 🤖
+
+      - name: Comentar en el PR - Validación fallida
+        if: steps.validation-result.outputs.passed == 'false'
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          body: |
+            ## ❌ Validación de Perfil — Requiere Correcciones
+
+            Tu perfil tiene algunos problemas que debes corregir:
+
+            | Verificación | Estado |
+            |-------------|--------|
+            | Solo se modificó `participants/` | ${{ steps.check-only-profile.outcome == 'success' && '✅' || '❌' }} |
+            | Existe un archivo de perfil nuevo | ${{ steps.check-profile-exists.outcome == 'success' && '✅' || '❌' }} |
+            | Todos los campos requeridos están completos | ${{ steps.check-profile-fields.outcome == 'success' && '✅' || '❌' }} |
+
+            **Campos requeridos en tu archivo:**
+            ```yaml
+            ---
+            name: Tu Nombre Completo
+            career: Tu Carrera
+            semester: Tu semestre
+            description: Una descripción sobre ti
+            hobbies: Tus hobbies
+            image: https://url-de-tu-foto.jpg
+            github: tu-usuario-github
+            ---
+            ```
+
+            Corrige los errores, haz commit y push — este comentario se actualizará automáticamente.
+
+            > *Validado automáticamente por el CI del taller* 🤖
+
+      - name: Fallar el job si la validación no pasó
+        if: steps.validation-result.outputs.passed == 'false'
+        run: exit 1

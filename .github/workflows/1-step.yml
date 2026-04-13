@@ -1,0 +1,140 @@
+name: Paso 1 - Validar Rama
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - 'add-profile/**'
+
+permissions:
+  contents: write
+  actions: write
+  issues: write
+
+env:
+  STEP_2_FILE: ".github/steps/2-step.md"
+
+jobs:
+  find_exercise:
+    name: Encontrar Issue del Ejercicio
+    uses: skills/exercise-toolkit/.github/workflows/find-exercise-issue.yml@v0.8.1
+
+  check_step_work:
+    name: Verificar Paso 1
+    runs-on: ubuntu-latest
+    needs: [find_exercise]
+    env:
+      ISSUE_REPOSITORY: ${{ github.repository }}
+      ISSUE_NUMBER: ${{ needs.find_exercise.outputs.issue-number }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Obtener plantillas de respuesta
+        uses: actions/checkout@v4
+        with:
+          repository: skills/exercise-toolkit
+          path: exercise-toolkit
+          ref: v0.8.1
+
+      - name: Encontrar último comentario
+        id: find-last-comment
+        uses: peter-evans/find-comment@v3
+        with:
+          repository: ${{ env.ISSUE_REPOSITORY }}
+          issue-number: ${{ env.ISSUE_NUMBER }}
+          direction: last
+
+      - name: Actualizar comentario - verificando trabajo
+        uses: GrantBirki/comment@v2.1.1
+        with:
+          repository: ${{ env.ISSUE_REPOSITORY }}
+          issue-number: ${{ env.ISSUE_NUMBER }}
+          comment-id: ${{ steps.find-last-comment.outputs.comment-id }}
+          file: exercise-toolkit/markdown-templates/step-feedback/checking-work.md
+          edit-mode: replace
+
+      - name: Verificar que la rama sigue el formato correcto
+        id: check-branch-name
+        continue-on-error: true
+        env:
+          BRANCH_NAME: ${{ github.ref_name }}
+        run: |
+          if [[ "$BRANCH_NAME" =~ ^add-profile/.+ ]]; then
+            echo "La rama '$BRANCH_NAME' sigue el formato correcto: add-profile/<usuario>"
+            exit 0
+          else
+            echo "La rama '$BRANCH_NAME' NO sigue el formato correcto."
+            echo "Debe ser: add-profile/<tu-usuario-de-github>"
+            exit 1
+          fi
+
+      - name: Publicar resultados del Paso 1
+        uses: GrantBirki/comment@v2.1.1
+        with:
+          repository: ${{ env.ISSUE_REPOSITORY }}
+          issue-number: ${{ env.ISSUE_NUMBER }}
+          comment-id: ${{ steps.find-last-comment.outputs.comment-id }}
+          edit-mode: replace
+          file: exercise-toolkit/markdown-templates/step-feedback/step-results-table.md
+          vars: |
+            step_number: 1
+            results_table:
+              - description: "La rama sigue el formato 'add-profile/<tu-usuario>'"
+                passed: ${{ steps.check-branch-name.outcome == 'success' }}
+
+      - name: Fallar si no pasaron todas las verificaciones
+        if: contains(steps.*.outcome, 'failure')
+        run: exit 1
+
+  post_next_step_content:
+    name: Publicar instrucciones del Paso 2
+    needs: [find_exercise, check_step_work]
+    runs-on: ubuntu-latest
+    env:
+      ISSUE_REPOSITORY: ${{ github.repository }}
+      ISSUE_NUMBER: ${{ needs.find_exercise.outputs.issue-number }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Obtener plantillas de respuesta
+        uses: actions/checkout@v4
+        with:
+          repository: skills/exercise-toolkit
+          path: exercise-toolkit
+          ref: v0.8.1
+
+      - name: Publicar comentario - paso completado
+        uses: GrantBirki/comment@v2.1.1
+        with:
+          repository: ${{ env.ISSUE_REPOSITORY }}
+          issue-number: ${{ env.ISSUE_NUMBER }}
+          file: exercise-toolkit/markdown-templates/step-feedback/step-finished-prepare-next-step.md
+          vars: |
+            next_step_number: 2
+
+      - name: Publicar comentario - contenido del Paso 2
+        uses: GrantBirki/comment@v2.1.1
+        with:
+          repository: ${{ env.ISSUE_REPOSITORY }}
+          issue-number: ${{ env.ISSUE_NUMBER }}
+          file: ${{ env.STEP_2_FILE }}
+          vars: |
+            login: ${{ github.actor }}
+
+      - name: Publicar comentario - esperando progreso
+        uses: GrantBirki/comment@v2.1.1
+        with:
+          repository: ${{ env.ISSUE_REPOSITORY }}
+          issue-number: ${{ env.ISSUE_NUMBER }}
+          file: exercise-toolkit/markdown-templates/step-feedback/watching-for-progress.md
+
+      - name: Desactivar Paso 1 y activar Paso 2
+        run: |
+          gh workflow disable "${{ github.workflow }}"
+          gh workflow enable "Paso 2 - Validar Perfil"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

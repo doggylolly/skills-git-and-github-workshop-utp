@@ -1,0 +1,12 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer components {
+  .card {
+    @apply bg-white rounded-lg shadow-md p-6 text-center;
+  }
+  .btn-github {
+    @apply inline-flex items-center text-gray-600 hover:text-blue-600 transition-colors;
+  }
+}

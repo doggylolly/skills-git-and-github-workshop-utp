@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="default">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Taller de Git y GitHub — UTP Panamá</title>
+    <link rel="stylesheet" href="{{ '/assets/css/tailwind.css' | url }}">
+    <link rel="stylesheet" href="{{ '/assets/css/themes.css' | url }}">
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+  </head>
+  <body class="bg-gray-50 min-h-screen flex flex-col transition-all duration-500 ease-in-out">
+
+    <header class="header" style="position: relative;">
+      <div class="flex items-center space-x-4">
+        <img src="{{ '/assets/utp-logo.png' | url }}" alt="UTP Logo" class="h-8 logo-image" onerror="this.style.display='none'">
+        <img src="{{ '/assets/github-logo.png' | url }}" alt="GitHub Logo" class="h-8 logo-image" onerror="this.style.display='none'">
+        <span style="font-weight:700; font-size:1rem; color:#1f2937;">UTP × GitHub</span>
+      </div>
+      <nav class="flex items-center space-x-6">
+        <select id="theme-selector" class="theme-dropdown-nav">
+          <option value="default">🎨 Default</option>
+          <option value="retro80s">🕹️ 80s Retro</option>
+          <option value="terminal">💻 Terminal</option>
+        </select>
+      </nav>
+    </header>
+
+    <main class="container mx-auto px-4 py-8">
+      <h1 class="text-4xl font-bold text-center mb-4">Taller Git & GitHub UTP</h1>
+      <p class="max-w-3xl mx-auto text-lg text-gray-600 text-center mb-12">
+        Bienvenidos al directorio de participantes del taller de Git y GitHub de la
+        Universidad Tecnológica de Panamá. Cada tarjeta fue agregada por un estudiante
+        mediante un Pull Request — ¡así es como funciona la colaboración real en GitHub!
+      </p>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+        {% for participant in collections.participants %}
+          {% include "participant.njk" %}
+        {% endfor %}
+      </div>
+
+      {% if collections.participants.length == 0 %}
+        <div style="text-align:center; padding: 4rem; color:#6b7280;">
+          <p style="font-size:3rem;">👋</p>
+          <p style="font-size:1.25rem; font-weight:600; margin-bottom:0.5rem;">¡Aún no hay participantes!</p>
+          <p>Sigue las instrucciones del ejercicio para ser el primero en aparecer aquí.</p>
+        </div>
+      {% endif %}
+    </main>
+
+    <footer class="mt-auto bg-gray-900 text-white py-8">
+      <div class="container mx-auto px-4">
+        <div class="flex flex-col items-center justify-center space-y-4">
+          <div class="flex items-center space-x-6">
+            <img src="{{ '/assets/utp-logo.png' | url }}" alt="UTP Logo" class="footer-logo h-8 brightness-0 invert" onerror="this.style.display='none'">
+            <img src="{{ '/assets/github-logo.png' | url }}" alt="GitHub Logo" class="footer-logo h-8 brightness-0 invert" onerror="this.style.display='none'">
+          </div>
+          <div class="text-center">
+            <p class="text-sm text-gray-400">Taller de Git y GitHub — Universidad Tecnológica de Panamá</p>
+            <p class="text-sm text-gray-400">© 2025 UTP & GitHub</p>
+          </div>
+        </div>
+      </div>
+    </footer>
+
+    <script>
+      const themeSelector = document.getElementById('theme-selector');
+      const html = document.documentElement;
+
+      const savedTheme = localStorage.getItem('utp-workshop-theme') || 'default';
+      html.setAttribute('data-theme', savedTheme);
+      themeSelector.value = savedTheme;
+
+      const themeNames = {
+        'default': '🎨 Tema Default activado',
+        'retro80s': '🕹️ Modo Retro 80s activado!',
+        'terminal': '💻 Modo Terminal activado'
+      };
+
+      themeSelector.addEventListener('change', function() {
+        const selected = this.value;
+        document.body.style.opacity = '0.7';
+        setTimeout(() => {
+          html.setAttribute('data-theme', selected);
+          localStorage.setItem('utp-workshop-theme', selected);
+          document.body.style.opacity = '1';
+          showNotification(themeNames[selected]);
+        }, 150);
+      });
+
+      function showNotification(text) {
+        const existing = document.querySelector('.theme-notification');
+        if (existing) existing.remove();
+        const el = document.createElement('div');
+        el.className = 'theme-notification';
+        el.textContent = text;
+        document.body.appendChild(el);
+        setTimeout(() => {
+          el.style.opacity = '0';
+          setTimeout(() => el.remove(), 300);
+        }, 2000);
+      }
+    </script>
+  </body>
+</html>

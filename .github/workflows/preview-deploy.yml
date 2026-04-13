@@ -1,0 +1,87 @@
+name: CI - Preview en Vercel
+
+on:
+  pull_request_target:
+    branches:
+      - main
+    types: [opened, synchronize]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  deploy-preview:
+    name: Desplegar preview en Vercel
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout del PR
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Instalar dependencias
+        run: npm install
+
+      - name: Instalar Vercel CLI
+        run: npm install -g vercel@latest
+
+      - name: Construir el sitio con Eleventy
+        run: npm run build
+
+      - name: Obtener configuración de Vercel
+        run: |
+          vercel pull --yes \
+            --environment=preview \
+            --token=${{ secrets.VERCEL_TOKEN }}
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+      - name: Desplegar preview en Vercel
+        id: deploy
+        run: |
+          PREVIEW_URL=$(vercel deploy --prebuilt \
+            --token=${{ secrets.VERCEL_TOKEN }})
+          echo "preview_url=$PREVIEW_URL" >> $GITHUB_OUTPUT
+          echo "Preview URL: $PREVIEW_URL"
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+      - name: Buscar comentario de preview existente
+        id: find-comment
+        uses: peter-evans/find-comment@v3
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          comment-author: 'github-actions[bot]'
+          body-includes: 'Preview de Vercel'
+
+      - name: Publicar o actualizar comentario con el preview
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          comment-id: ${{ steps.find-comment.outputs.comment-id }}
+          issue-number: ${{ github.event.pull_request.number }}
+          edit-mode: replace
+          body: |
+            ## 🚀 Preview de Vercel
+
+            Tu tarjeta de perfil está lista para revisión:
+
+            | | |
+            |---|---|
+            | **Preview** | [${{ steps.deploy.outputs.preview_url }}](${{ steps.deploy.outputs.preview_url }}) |
+            | **Commit** | `${{ github.event.pull_request.head.sha }}` |
+            | **Estado** | ✅ Desplegado |
+
+            Haz clic en el enlace para ver cómo quedará tu tarjeta en el sitio del taller.
+            ¡Comparte el preview en LinkedIn antes del merge! 🔗
+
+            > *Generado automáticamente por el CI del taller* 🤖

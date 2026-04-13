@@ -1,0 +1,5 @@
+README.md
+participants/_template.md
+.github/**
+node_modules/**
+_site/**
